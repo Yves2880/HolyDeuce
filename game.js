@@ -1,18 +1,16 @@
-// ===== HOLY DEUCE - PADEL ARCADE GAME ENGINE =====
+// ===== HOLY DEUCE - PADEL ARCADE ENGINE =====
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const wrapper = document.getElementById('game-wrapper');
 
 const COLORS = {
-  court: '#1A7A7A', courtDark: '#135C5C',
-  courtLines: 'rgba(255,248,240,0.25)',
   ball: '#E8A825', ballGlow: 'rgba(232,168,37,0.4)',
-  paddle: '#C4392D', paddleGradEnd: '#E8832A',
-  enemy: '#E8832A', enemyGradEnd: '#E8A825',
-  glass: 'rgba(255,255,255,0.08)', glassBorder: 'rgba(255,255,255,0.15)',
-  text: '#FFF8F0', scoreText: '#E8A825', net: 'rgba(255,248,240,0.12)',
-  gold: '#E8A825'
+  paddle: '#C4392D', paddleEnd: '#E8832A',
+  enemy: '#E8832A', enemyEnd: '#E8A825',
+  text: '#FFF8F0', scoreText: '#E8A825', gold: '#E8A825'
 };
+
+const GLASS_W = 10; // glass wall thickness
 
 let W, H;
 let gameState = 'menu';
@@ -24,9 +22,14 @@ let combo = 0;
 let maxCombo = 0;
 let hitCount = 0;
 
-let ball = { x: 0, y: 0, vx: 0, vy: 0, r: 8, speed: 0, trail: [] };
-let player = { x: 0, y: 0, w: 80, h: 18, speed: 0 };
-let enemy = { x: 0, y: 0, w: 80, h: 16, speed: 0 };
+let ball = { x:0, y:0, vx:0, vy:0, r:7, speed:0, trail:[] };
+let player = { x:0, y:0, w:70, h:16 };
+let enemy = { x:0, y:0, w:70, h:14, speed:0 };
+
+// Glass bounce tracking for double-bounce rule
+let playerGlassBounces = 0;
+let enemyGlassBounces = 0;
+let lastHitBy = 'none'; // 'player', 'enemy', 'none'
 
 let inputX = null;
 let keysDown = {};
@@ -37,10 +40,10 @@ let lastTime = 0;
 // ===== LEVEL CONFIG =====
 function getLevelConfig(lvl) {
   return {
-    ballSpeed: 4 + lvl * 0.7,
-    enemySpeed: 2.2 + lvl * 0.5,
-    enemyWidth: Math.max(40, 80 - lvl * 4),
-    playerWidth: Math.max(50, 80 - lvl * 2)
+    ballSpeed: 3.8 + lvl * 0.65,
+    enemySpeed: 2.0 + lvl * 0.5,
+    enemyWidth: Math.max(36, 70 - lvl * 3.5),
+    playerWidth: Math.max(44, 70 - lvl * 2)
   };
 }
 
@@ -59,50 +62,51 @@ resize();
 
 // ===== INIT =====
 function initGame() {
-  const cfg = getLevelConfig(1);
   score = 0; level = 1; lives = 3; combo = 0; maxCombo = 0; hitCount = 0;
   particles = [];
-  player.w = cfg.playerWidth; player.h = 18;
-  player.x = W / 2 - player.w / 2; player.y = H - 60;
-  enemy.w = cfg.enemyWidth; enemy.h = 16;
-  enemy.x = W / 2 - enemy.w / 2; enemy.y = 40;
+  const cfg = getLevelConfig(1);
+  player.w = cfg.playerWidth; player.h = 16;
+  player.x = W/2 - player.w/2; player.y = H - 65;
+  enemy.w = cfg.enemyWidth; enemy.h = 14;
+  enemy.x = W/2 - enemy.w/2; enemy.y = 48;
   resetBall();
 }
 
 function resetBall() {
   const cfg = getLevelConfig(level);
-  ball.x = W / 2; ball.y = H / 2;
+  ball.x = W/2; ball.y = H/2;
   ball.speed = cfg.ballSpeed;
-  const angle = (Math.random() * 0.6 + 0.2) * (Math.random() < 0.5 ? 1 : -1);
+  const angle = (Math.random()*0.6+0.2) * (Math.random()<0.5?1:-1);
   ball.vx = Math.sin(angle) * ball.speed;
   ball.vy = -Math.cos(angle) * ball.speed;
   ball.trail = [];
   enemy.speed = cfg.enemySpeed;
   enemy.w = cfg.enemyWidth;
   player.w = cfg.playerWidth;
+  playerGlassBounces = 0;
+  enemyGlassBounces = 0;
+  lastHitBy = 'none';
 }
 
 function nextLevel() {
-  level++; combo = 0;
-  showLevelBanner(`LEVEL ${level}`);
+  level++; combo = 0; hitCount = 0;
+  showLevelBanner('LEVEL ' + level);
   AudioEngine.sfxLevelUp();
   resetBall();
 }
 
 function showLevelBanner(text) {
-  const banner = document.getElementById('levelBanner');
-  banner.textContent = text;
-  banner.style.opacity = '1';
-  setTimeout(() => { banner.style.opacity = '0'; }, 1500);
+  const b = document.getElementById('levelBanner');
+  b.textContent = text; b.style.opacity = '1';
+  setTimeout(function(){ b.style.opacity = '0'; }, 1500);
 }
 
 // ===== PARTICLES =====
 function spawnParticles(x, y, color, count) {
   for (let i = 0; i < count; i++) {
     particles.push({
-      x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6,
-      life: 1, decay: 0.02 + Math.random() * 0.03,
-      r: 2 + Math.random() * 3, color
+      x:x, y:y, vx:(Math.random()-0.5)*6, vy:(Math.random()-0.5)*6,
+      life:1, decay:0.02+Math.random()*0.03, r:2+Math.random()*3, color:color
     });
   }
 }
@@ -112,108 +116,139 @@ function handlePointerMove(clientX) {
   const rect = canvas.getBoundingClientRect();
   inputX = ((clientX - rect.left) / rect.width) * W;
 }
-canvas.addEventListener('mousemove', e => handlePointerMove(e.clientX));
-canvas.addEventListener('touchmove', e => { e.preventDefault(); handlePointerMove(e.touches[0].clientX); }, { passive: false });
-canvas.addEventListener('touchstart', e => { e.preventDefault(); handlePointerMove(e.touches[0].clientX); }, { passive: false });
-document.addEventListener('keydown', e => { keysDown[e.key] = true; });
-document.addEventListener('keyup', e => { keysDown[e.key] = false; });
+canvas.addEventListener('mousemove', function(e){ handlePointerMove(e.clientX); });
+canvas.addEventListener('touchmove', function(e){ e.preventDefault(); handlePointerMove(e.touches[0].clientX); }, {passive:false});
+canvas.addEventListener('touchstart', function(e){ e.preventDefault(); handlePointerMove(e.touches[0].clientX); }, {passive:false});
+document.addEventListener('keydown', function(e){ keysDown[e.key]=true; });
+document.addEventListener('keyup', function(e){ keysDown[e.key]=false; });
 
 // ===== UPDATE =====
 function update(dt) {
   if (gameState !== 'playing') return;
 
-  // Player
-  const pSpeed = 7;
+  // Player movement
   if (inputX !== null) {
-    player.x += (inputX - player.w / 2 - player.x) * 0.25;
+    player.x += (inputX - player.w/2 - player.x) * 0.25;
   }
-  if (keysDown['ArrowLeft'] || keysDown['a'] || keysDown['A']) player.x -= pSpeed;
-  if (keysDown['ArrowRight'] || keysDown['d'] || keysDown['D']) player.x += pSpeed;
-  player.x = Math.max(8, Math.min(W - 8 - player.w, player.x));
+  if (keysDown['ArrowLeft']||keysDown['a']||keysDown['A']) player.x -= 7;
+  if (keysDown['ArrowRight']||keysDown['d']||keysDown['D']) player.x += 7;
+  player.x = Math.max(GLASS_W, Math.min(W - GLASS_W - player.w, player.x));
 
   // Enemy AI
-  const ec = enemy.x + enemy.w / 2;
-  const diff = ball.x - ec;
-  const wobble = Math.sin(Date.now() * 0.003) * 0.5;
-  enemy.x += Math.sign(diff) * Math.min(Math.abs(diff), enemy.speed) + wobble;
-  enemy.x = Math.max(8, Math.min(W - 8 - enemy.w, enemy.x));
+  var ec = enemy.x + enemy.w/2;
+  var diff = ball.x - ec;
+  var wobble = Math.sin(Date.now()*0.003)*0.5;
+  enemy.x += Math.sign(diff)*Math.min(Math.abs(diff), enemy.speed) + wobble;
+  enemy.x = Math.max(GLASS_W, Math.min(W - GLASS_W - enemy.w, enemy.x));
 
   // Ball trail
-  ball.trail.push({ x: ball.x, y: ball.y });
+  ball.trail.push({x:ball.x, y:ball.y});
   if (ball.trail.length > 12) ball.trail.shift();
 
   // Ball move
   ball.x += ball.vx;
   ball.y += ball.vy;
 
-  // Wall bounce (off glass walls)
-  if (ball.x - ball.r <= 8) {
-    ball.x = 8 + ball.r; ball.vx = Math.abs(ball.vx);
-    spawnParticles(ball.x, ball.y, '#fff', 5); AudioEngine.sfxBounce();
+  // === SIDE GLASS WALL BOUNCES ===
+  if (ball.x - ball.r <= GLASS_W) {
+    ball.x = GLASS_W + ball.r;
+    ball.vx = Math.abs(ball.vx);
+    spawnParticles(ball.x, ball.y, 'rgba(180,220,230,0.6)', 6);
+    AudioEngine.sfxBounce();
+    screenShake = 2;
   }
-  if (ball.x + ball.r >= W - 8) {
-    ball.x = W - 8 - ball.r; ball.vx = -Math.abs(ball.vx);
-    spawnParticles(ball.x, ball.y, '#fff', 5); AudioEngine.sfxBounce();
+  if (ball.x + ball.r >= W - GLASS_W) {
+    ball.x = W - GLASS_W - ball.r;
+    ball.vx = -Math.abs(ball.vx);
+    spawnParticles(ball.x, ball.y, 'rgba(180,220,230,0.6)', 6);
+    AudioEngine.sfxBounce();
+    screenShake = 2;
   }
 
-  // Player paddle collision
+  // === BACK GLASS WALL BOUNCES (padel mechanic!) ===
+  // Bottom back wall (behind player)
+  if (ball.y + ball.r >= H - GLASS_W) {
+    if (playerGlassBounces < 1) {
+      // First bounce off back glass - ball comes back into play
+      ball.y = H - GLASS_W - ball.r;
+      ball.vy = -Math.abs(ball.vy) * 0.75;
+      playerGlassBounces++;
+      spawnParticles(ball.x, H - GLASS_W, 'rgba(180,220,230,0.8)', 10);
+      AudioEngine.sfxBounce();
+      screenShake = 4;
+    } else {
+      // Second time reaching back wall = double bounce, lose life
+      lives--; combo = 0; screenShake = 8;
+      spawnParticles(ball.x, H - GLASS_W, COLORS.paddle, 20);
+      if (lives <= 0) { endGame(); return; }
+      AudioEngine.sfxLoseLife();
+      resetBall();
+      return;
+    }
+  }
+
+  // Top back wall (behind enemy)
+  if (ball.y - ball.r <= GLASS_W) {
+    if (enemyGlassBounces < 1) {
+      ball.y = GLASS_W + ball.r;
+      ball.vy = Math.abs(ball.vy) * 0.75;
+      enemyGlassBounces++;
+      spawnParticles(ball.x, GLASS_W, 'rgba(180,220,230,0.8)', 10);
+      AudioEngine.sfxBounce();
+      screenShake = 4;
+    } else {
+      // Enemy missed after glass bounce - player scores
+      score += 25 + level * 10;
+      spawnParticles(W/2, GLASS_W, COLORS.scoreText, 15);
+      AudioEngine.sfxScore();
+      resetBall();
+      return;
+    }
+  }
+
+  // === PLAYER PADDLE COLLISION ===
   if (ball.vy > 0 && ball.y + ball.r >= player.y && ball.y + ball.r <= player.y + player.h + ball.vy + 2) {
     if (ball.x >= player.x - ball.r && ball.x <= player.x + player.w + ball.r) {
       ball.y = player.y - ball.r;
-      const hitPos = (ball.x - (player.x + player.w / 2)) / (player.w / 2);
-      const angle = hitPos * 1.1;
-      ball.speed = Math.min(ball.speed * 1.02, 12);
+      var hitPos = (ball.x - (player.x + player.w/2)) / (player.w/2);
+      var angle = hitPos * 1.1;
+      ball.speed = Math.min(ball.speed * 1.02, 11);
       ball.vx = Math.sin(angle) * ball.speed;
       ball.vy = -Math.cos(angle) * ball.speed;
+      lastHitBy = 'player';
+      playerGlassBounces = 0; // reset glass bounces on hit
       combo++; maxCombo = Math.max(maxCombo, combo);
       score += 10 + Math.min(combo, 10) * 5;
       hitCount++;
       spawnParticles(ball.x, ball.y, COLORS.gold, 8);
       screenShake = 3;
       AudioEngine.sfxHit();
-      if (hitCount >= 8) { hitCount = 0; score += level * 50; nextLevel(); }
+      if (hitCount >= 8) { score += level * 50; nextLevel(); }
     }
   }
 
-  // Enemy paddle collision
+  // === ENEMY PADDLE COLLISION ===
   if (ball.vy < 0 && ball.y - ball.r <= enemy.y + enemy.h && ball.y - ball.r >= enemy.y + enemy.h + ball.vy - 2) {
     if (ball.x >= enemy.x - ball.r && ball.x <= enemy.x + enemy.w + ball.r) {
       ball.y = enemy.y + enemy.h + ball.r;
-      const hitPos = (ball.x - (enemy.x + enemy.w / 2)) / (enemy.w / 2);
-      ball.vx = Math.sin(hitPos * 0.9) * ball.speed;
-      ball.vy = Math.cos(hitPos * 0.9) * ball.speed;
+      var hp = (ball.x - (enemy.x + enemy.w/2)) / (enemy.w/2);
+      ball.vx = Math.sin(hp*0.9) * ball.speed;
+      ball.vy = Math.cos(hp*0.9) * ball.speed;
+      lastHitBy = 'enemy';
+      enemyGlassBounces = 0; // reset glass bounces on hit
       score += 5;
       spawnParticles(ball.x, ball.y, COLORS.enemy, 6);
       AudioEngine.sfxBounce();
     }
   }
 
-  // Ball out top
-  if (ball.y - ball.r < -20) {
-    score += 25 + level * 10;
-    spawnParticles(W / 2, 10, COLORS.scoreText, 15);
-    AudioEngine.sfxScore();
-    resetBall();
-  }
-
-  // Ball out bottom
-  if (ball.y - ball.r > H + 20) {
-    lives--; combo = 0; screenShake = 8;
-    spawnParticles(ball.x, H, COLORS.paddle, 20);
-    if (lives <= 0) {
-      endGame();
-    } else {
-      AudioEngine.sfxLoseLife();
-      resetBall();
-    }
-  }
-
+  // Screen shake decay
   if (screenShake > 0) screenShake *= 0.85;
   if (screenShake < 0.2) screenShake = 0;
 
-  // Particles
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
+  // Particles update
+  for (var i = particles.length-1; i >= 0; i--) {
+    var p = particles[i];
     p.x += p.vx; p.y += p.vy; p.life -= p.decay;
     if (p.life <= 0) particles.splice(i, 1);
   }
@@ -226,62 +261,59 @@ function draw() {
     ctx.translate((Math.random()-0.5)*screenShake*2, (Math.random()-0.5)*screenShake*2);
   }
 
-  // Court
-  const cg = ctx.createLinearGradient(0, 0, 0, H);
-  cg.addColorStop(0, COLORS.courtDark); cg.addColorStop(0.5, COLORS.court); cg.addColorStop(1, COLORS.courtDark);
-  ctx.fillStyle = cg; ctx.fillRect(0, 0, W, H);
-
-  // Court lines
-  ctx.strokeStyle = COLORS.courtLines; ctx.lineWidth = 2;
-  ctx.strokeRect(8, 8, W - 16, H - 16);
-  ctx.setLineDash([8, 8]);
-  ctx.beginPath(); ctx.moveTo(8, H/2); ctx.lineTo(W-8, H/2); ctx.stroke();
-  ctx.setLineDash([]);
-  const bW = W * 0.6, bH = H * 0.2;
-  ctx.strokeRect((W-bW)/2, H/2-bH, bW, bH);
-  ctx.strokeRect((W-bW)/2, H/2, bW, bH);
-  ctx.beginPath(); ctx.moveTo(W/2, H/2-bH); ctx.lineTo(W/2, H/2+bH); ctx.stroke();
-
-  // Glass walls
-  ctx.fillStyle = COLORS.glass; ctx.fillRect(0, 0, 8, H); ctx.fillRect(W-8, 0, 8, H);
-  ctx.strokeStyle = COLORS.glassBorder; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(8, H); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(W-8, 0); ctx.lineTo(W-8, H); ctx.stroke();
-
-  // Net
-  ctx.fillStyle = COLORS.net; ctx.fillRect(0, H/2-1, W, 3);
-  for (let i = 0; i < W; i += 12) {
-    ctx.fillStyle = 'rgba(255,248,240,0.2)'; ctx.fillRect(i, H/2-3, 2, 7);
-  }
+  // Court (from court.js)
+  drawCourt(ctx, W, H);
 
   // Ball trail
-  ball.trail.forEach((t, i) => {
-    ctx.globalAlpha = (i / ball.trail.length) * 0.3;
+  ball.trail.forEach(function(t, i) {
+    ctx.globalAlpha = (i/ball.trail.length)*0.3;
     ctx.fillStyle = COLORS.ball;
-    ctx.beginPath(); ctx.arc(t.x, t.y, ball.r * (i / ball.trail.length) * 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, ball.r*(i/ball.trail.length)*0.7, 0, Math.PI*2);
+    ctx.fill();
   });
   ctx.globalAlpha = 1;
 
   // Ball glow
-  const bg = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, ball.r * 3);
+  var bg = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, ball.r*3);
   bg.addColorStop(0, COLORS.ballGlow); bg.addColorStop(1, 'transparent');
-  ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r * 3, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = bg;
+  ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r*3, 0, Math.PI*2); ctx.fill();
 
-  // Ball
-  ctx.fillStyle = COLORS.ball;
-  ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#FFF'; ctx.lineWidth = 1; ctx.globalAlpha = 0.3; ctx.stroke(); ctx.globalAlpha = 1;
+  // Ball (tennis ball look)
+  var ballGrad = ctx.createRadialGradient(ball.x-2, ball.y-2, 0, ball.x, ball.y, ball.r);
+  ballGrad.addColorStop(0, '#F0D040');
+  ballGrad.addColorStop(1, '#D4A017');
+  ctx.fillStyle = ballGrad;
+  ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill();
+  // Ball seam
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r*0.6, -0.8, 0.8);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r*0.6, Math.PI-0.8, Math.PI+0.8);
+  ctx.stroke();
 
-  // Player racket (bottom)
-  drawPadelRacket(player.x, player.y, player.w, player.h, COLORS.paddle, COLORS.paddleGradEnd, false);
+  // Player racket
+  drawPadelRacket(ctx, player.x, player.y, player.w, player.h, COLORS.paddle, COLORS.paddleEnd, false);
 
-  // Enemy racket (top)
-  drawPadelRacket(enemy.x, enemy.y, enemy.w, enemy.h, COLORS.enemy, COLORS.enemyGradEnd, true);
+  // Enemy racket
+  drawPadelRacket(ctx, enemy.x, enemy.y, enemy.w, enemy.h, COLORS.enemy, COLORS.enemyEnd, true);
+
+  // Glass bounce indicator
+  if (playerGlassBounces > 0) {
+    ctx.fillStyle = 'rgba(232,168,37,0.5)';
+    ctx.font = '600 11px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('GLASS!', ball.x, H - GLASS_W - 6);
+  }
 
   // Particles
-  particles.forEach(p => {
+  particles.forEach(function(p) {
     ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
-    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r*p.life, 0, Math.PI*2); ctx.fill();
   });
   ctx.globalAlpha = 1;
 
@@ -290,120 +322,29 @@ function draw() {
   ctx.restore();
 }
 
-// ===== PADEL RACKET DRAWING =====
-function drawPadelRacket(x, y, w, h, color1, color2, flipped) {
-  const cx = x + w / 2;
-  const headW = w;
-  const headH = h + 10;
-  const handleW = 6;
-  const handleH = 12;
-
-  // Positions depend on orientation
-  let headY, handleY;
-  if (flipped) {
-    // Enemy: handle on top, head on bottom
-    handleY = y - 2;
-    headY = y + handleH - 6;
-  } else {
-    // Player: head on top, handle on bottom
-    headY = y;
-    handleY = y + headH - 4;
-  }
-
-  // Handle
-  const hGrad = ctx.createLinearGradient(cx - handleW/2, 0, cx + handleW/2, 0);
-  hGrad.addColorStop(0, '#8B4513');
-  hGrad.addColorStop(0.5, '#D2691E');
-  hGrad.addColorStop(1, '#8B4513');
-  ctx.fillStyle = hGrad;
-  ctx.beginPath();
-  ctx.roundRect(cx - handleW/2, handleY, handleW, handleH, 3);
-  ctx.fill();
-
-  // Grip wrap lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-  ctx.lineWidth = 1;
-  for (let i = 2; i < handleH - 2; i += 3) {
-    ctx.beginPath();
-    ctx.moveTo(cx - handleW/2 + 1, handleY + i);
-    ctx.lineTo(cx + handleW/2 - 1, handleY + i + 2);
-    ctx.stroke();
-  }
-
-  // Racket head (rounded rectangle / teardrop)
-  const grad = ctx.createLinearGradient(x, headY, x + headW, headY);
-  grad.addColorStop(0, color1);
-  grad.addColorStop(1, color2);
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.ellipse(cx, headY + headH / 2, headW / 2, headH / 2, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Racket frame border
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.ellipse(cx, headY + headH / 2, headW / 2, headH / 2, 0, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Inner frame
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.ellipse(cx, headY + headH / 2, headW / 2 - 3, headH / 2 - 3, 0, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Holes pattern (signature padel racket look)
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  const rows = 3;
-  const cols = Math.floor(headW / 10);
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const hx = cx - (cols - 1) * 5 + c * 10;
-      const hy = headY + headH / 2 - (rows - 1) * 4 + r * 8;
-      // Check if hole is inside the ellipse
-      const dx = (hx - cx) / (headW / 2 - 5);
-      const dy = (hy - (headY + headH / 2)) / (headH / 2 - 5);
-      if (dx * dx + dy * dy < 1) {
-        ctx.beginPath();
-        ctx.arc(hx, hy, 2.2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  }
-
-  // Top shine
-  ctx.globalAlpha = 0.15;
-  ctx.fillStyle = '#FFF';
-  ctx.beginPath();
-  ctx.ellipse(cx, headY + headH * 0.35, headW / 2 - 6, headH / 4, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-}
-
 function drawHUD() {
   ctx.fillStyle = COLORS.scoreText;
   ctx.font = '700 24px "Playfair Display", serif';
   ctx.textAlign = 'center';
-  ctx.fillText(score.toLocaleString(), W / 2, H - 14);
+  ctx.fillText(score.toLocaleString(), W/2, H - 16);
 
   ctx.fillStyle = COLORS.text;
-  ctx.font = '600 13px Inter, sans-serif';
+  ctx.font = '600 12px Inter, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText(`LVL ${level}`, 16, H - 16);
+  ctx.fillText('LVL ' + level, GLASS_W + 6, H - 18);
 
   ctx.textAlign = 'right';
-  ctx.font = '16px sans-serif';
-  let livesStr = '';
-  for (let i = 0; i < lives; i++) livesStr += '\u{1F525}';
-  ctx.fillText(livesStr, W - 16, H - 14);
+  ctx.font = '14px sans-serif';
+  var livesStr = '';
+  for (var i = 0; i < lives; i++) livesStr += '\u{1F525}';
+  ctx.fillText(livesStr, W - GLASS_W - 6, H - 18);
 
   if (combo > 1) {
     ctx.textAlign = 'center';
     ctx.fillStyle = COLORS.gold;
-    ctx.font = '700 16px Inter, sans-serif';
+    ctx.font = '700 15px Inter, sans-serif';
     ctx.globalAlpha = 0.8;
-    ctx.fillText(`${combo}x COMBO`, W / 2, player.y - 20);
+    ctx.fillText(combo + 'x COMBO', W/2, player.y - 24);
     ctx.globalAlpha = 1;
   }
 }
@@ -413,19 +354,17 @@ async function endGame() {
   gameState = 'gameover';
   AudioEngine.stopMusic();
   AudioEngine.sfxGameOver();
-
-  const newHigh = await Leaderboard.isNewHigh(score);
+  var newHigh = await Leaderboard.isNewHigh(score);
   await Leaderboard.submitScore(nickname, score, level);
-
   document.getElementById('finalScore').textContent = score.toLocaleString();
-  document.getElementById('finalLevel').textContent = `Level ${level} \u00b7 ${maxCombo}x max combo`;
+  document.getElementById('finalLevel').textContent = 'Level ' + level + ' · ' + maxCombo + 'x max combo';
   document.getElementById('newHighLabel').classList.toggle('hidden', !newHigh);
   document.getElementById('gameOverScreen').classList.remove('hidden');
 }
 
 // ===== GAME LOOP =====
 function gameLoop(timestamp) {
-  const dt = Math.min((timestamp - lastTime) / 16.67, 3);
+  var dt = Math.min((timestamp - lastTime) / 16.67, 3);
   lastTime = timestamp;
   update(dt);
   draw();
@@ -434,37 +373,36 @@ function gameLoop(timestamp) {
 
 // ===== UI EVENTS =====
 document.getElementById('playBtn').addEventListener('click', startGame);
-document.getElementById('nicknameInput').addEventListener('keydown', e => {
+document.getElementById('nicknameInput').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') startGame();
 });
 
-document.getElementById('replayBtn').addEventListener('click', () => {
+document.getElementById('replayBtn').addEventListener('click', function() {
   document.getElementById('gameOverScreen').classList.add('hidden');
-  initGame();
-  gameState = 'playing';
+  initGame(); gameState = 'playing';
   AudioEngine.startMusic();
   showLevelBanner('LEVEL 1');
 });
 
-document.getElementById('menuBtn').addEventListener('click', () => {
+document.getElementById('menuBtn').addEventListener('click', function() {
   document.getElementById('gameOverScreen').classList.add('hidden');
   document.getElementById('startScreen').classList.remove('hidden');
   gameState = 'menu';
 });
 
-document.getElementById('showLeaderboardBtn').addEventListener('click', () => {
+document.getElementById('showLeaderboardBtn').addEventListener('click', function() {
   Leaderboard.renderTable(document.getElementById('scoreTable'));
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('leaderboardScreen').classList.remove('hidden');
 });
 
-document.getElementById('showLeaderboardBtn2').addEventListener('click', () => {
+document.getElementById('showLeaderboardBtn2').addEventListener('click', function() {
   Leaderboard.renderTable(document.getElementById('scoreTable'));
   document.getElementById('gameOverScreen').classList.add('hidden');
   document.getElementById('leaderboardScreen').classList.remove('hidden');
 });
 
-document.getElementById('backBtn').addEventListener('click', () => {
+document.getElementById('backBtn').addEventListener('click', function() {
   document.getElementById('leaderboardScreen').classList.add('hidden');
   if (gameState === 'gameover') {
     document.getElementById('gameOverScreen').classList.remove('hidden');
@@ -473,22 +411,20 @@ document.getElementById('backBtn').addEventListener('click', () => {
   }
 });
 
-document.getElementById('soundToggle').addEventListener('click', () => {
-  const on = AudioEngine.toggle();
+document.getElementById('soundToggle').addEventListener('click', function() {
+  var on = AudioEngine.toggle();
   document.getElementById('soundToggle').textContent = on ? '\u{1F50A}' : '\u{1F507}';
   if (on && gameState === 'playing') AudioEngine.startMusic();
 });
 
 function startGame() {
-  const input = document.getElementById('nicknameInput');
+  var input = document.getElementById('nicknameInput');
   nickname = input.value.trim() || 'Player';
   document.getElementById('startScreen').classList.add('hidden');
-  initGame();
-  gameState = 'playing';
+  initGame(); gameState = 'playing';
   AudioEngine.init();
   AudioEngine.startMusic();
   showLevelBanner('LEVEL 1');
 }
 
-// Start render loop
 requestAnimationFrame(gameLoop);
