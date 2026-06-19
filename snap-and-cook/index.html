@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="theme-color" content="#ff6b35" />
+  <title>Snap &amp; Cook — photo to recipe</title>
+  <meta name="description" content="Snap a photo of your ingredients and get easy recipes you can actually make." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>🥕 Snap &amp; Cook</h1>
+    <p class="tagline">Snap your ingredients, get easy recipes.</p>
+  </header>
+
+  <main class="app-main">
+    <!-- Step 1: ingredients -->
+    <section class="card" aria-labelledby="ingredients-heading">
+      <h2 id="ingredients-heading">1. Your ingredients</h2>
+
+      <div class="photo-zone" id="photo-zone">
+        <input
+          type="file"
+          id="photo-input"
+          accept="image/*"
+          capture="environment"
+          hidden
+        />
+        <button type="button" class="btn btn-photo" id="photo-btn">
+          📷 Snap or upload a photo
+        </button>
+        <p class="photo-hint">
+          We detect a handful of common foods on-device. Tap detections to keep them,
+          then add anything else by hand below.
+        </p>
+        <div class="preview-wrap" id="preview-wrap" hidden>
+          <canvas id="preview-canvas" class="preview-canvas"></canvas>
+          <p class="vision-status" id="vision-status" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <form class="tag-form" id="tag-form" autocomplete="off">
+        <label class="sr-only" for="tag-input">Add an ingredient</label>
+        <input
+          type="text"
+          id="tag-input"
+          class="tag-input"
+          placeholder="Type an ingredient, e.g. chicken — press Enter"
+        />
+        <button type="submit" class="btn btn-add">Add</button>
+      </form>
+
+      <ul class="tag-list" id="tag-list" aria-live="polite"></ul>
+      <p class="empty-hint" id="tags-empty-hint">No ingredients yet — snap a photo or type one above.</p>
+
+      <button type="button" class="btn btn-primary" id="find-btn" disabled>
+        🍳 Find recipes
+      </button>
+    </section>
+
+    <!-- Step 2: results -->
+    <section class="card" id="results-section" aria-labelledby="results-heading" hidden>
+      <h2 id="results-heading">2. Easy recipes for you</h2>
+      <p class="results-status" id="results-status" aria-live="polite"></p>
+      <div class="results-grid" id="results-grid"></div>
+    </section>
+  </main>
+
+  <!-- Recipe detail modal -->
+  <div class="modal-overlay" id="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button type="button" class="modal-close" id="modal-close" aria-label="Close">×</button>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <footer class="app-footer">
+    <p>
+      Recipes from <a href="https://www.themealdb.com" target="_blank" rel="noopener">TheMealDB</a>.
+      Photo detection runs in your browser with TensorFlow.js.
+    </p>
+  </footer>
+
+  <!-- TensorFlow.js + COCO-SSD from CDN (lazy-used by vision.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js" defer></script>
+
+  <!-- App modules (plain scripts, no bundler) -->
+  <script src="vision.js" defer></script>
+  <script src="tags.js" defer></script>
+  <script src="recipes.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
