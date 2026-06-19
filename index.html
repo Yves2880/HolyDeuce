@@ -11,6 +11,7 @@
 <div id="game-wrapper">
   <canvas id="gameCanvas"></canvas>
   <button class="sound-toggle" id="soundToggle">&#x1F50A;</button>
+  <button class="pause-toggle" id="pauseBtn">&#x23F8;</button>
 
   <!-- START SCREEN -->
   <div id="startScreen" class="overlay">
@@ -19,17 +20,44 @@
     <div class="flame-icon">&#x1F525;</div>
     <div class="tagline">Serve &middot; Sweat &middot; Sin</div>
     <input type="text" id="nicknameInput" class="nickname-input" placeholder="Enter nickname" maxlength="12" autocomplete="off">
+    <div class="difficulty-selector">
+      <button class="diff-btn" data-diff="easy">EASY</button>
+      <button class="diff-btn diff-active" data-diff="normal">NORMAL</button>
+      <button class="diff-btn" data-diff="holy">HOLY</button>
+    </div>
     <button class="btn btn-play" id="playBtn">PLAY</button>
-    <button class="btn leaderboard-btn" id="showLeaderboardBtn">LEADERBOARD</button>
-    <div class="instructions">Move your paddle to return the ball<br>Touch/Mouse &middot; Arrow Keys &middot; A/D</div>
+    <button class="btn btn-daily" id="dailyBtn">&#x1F4C5; DAILY CHALLENGE</button>
+    <div class="menu-row">
+      <button class="btn leaderboard-btn" id="showLeaderboardBtn">SCORES</button>
+      <button class="btn leaderboard-btn" id="showAchievementsBtn">BADGES</button>
+    </div>
+    <div class="instructions">Move your paddle to return the ball<br>Touch/Mouse &middot; Arrow Keys &middot; A/D &middot; Space to Smash</div>
   </div>
 
   <!-- LEADERBOARD SCREEN -->
   <div id="leaderboardScreen" class="overlay hidden">
     <div class="logo-text" style="font-size:28px;">HOLY<span class="deuce" style="font-size:34px;">DEUCE</span></div>
-    <div class="tagline" style="font-size:11px; margin-top:4px;">High Scores</div>
+    <div class="tab-bar">
+      <button class="tab-btn tab-active" id="tabAllTime">ALL TIME</button>
+      <button class="tab-btn" id="tabDaily">DAILY</button>
+    </div>
     <div class="score-table" id="scoreTable"></div>
     <button class="btn btn-secondary" id="backBtn">BACK</button>
+  </div>
+
+  <!-- ACHIEVEMENTS SCREEN -->
+  <div id="achievementsScreen" class="overlay hidden">
+    <div class="logo-text" style="font-size:28px;">HOLY<span class="deuce" style="font-size:34px;">DEUCE</span></div>
+    <div class="tagline" style="font-size:11px; margin-top:4px;">Achievements</div>
+    <div class="achievements-list" id="achievementsList"></div>
+    <button class="btn btn-secondary" id="achievementsBackBtn">BACK</button>
+  </div>
+
+  <!-- PAUSE SCREEN -->
+  <div id="pauseScreen" class="overlay hidden">
+    <div class="logo-text" style="font-size:32px;">PAUSED</div>
+    <button class="btn btn-play" id="resumeBtn">RESUME</button>
+    <button class="btn btn-secondary" id="pauseMenuBtn">MENU</button>
   </div>
 
   <!-- GAME OVER SCREEN -->
@@ -39,17 +67,24 @@
     <div class="game-over-level" id="finalLevel">Level 1</div>
     <div class="new-high hidden" id="newHighLabel">&#x2B50; NEW HIGH SCORE! &#x2B50;</div>
     <button class="btn btn-play" id="replayBtn">PLAY AGAIN</button>
-    <button class="btn leaderboard-btn" id="showLeaderboardBtn2">LEADERBOARD</button>
+    <div class="menu-row">
+      <button class="btn leaderboard-btn" id="showLeaderboardBtn2">SCORES</button>
+      <button class="btn leaderboard-btn" id="shareBtn">SHARE</button>
+    </div>
     <button class="btn btn-secondary" id="menuBtn" style="margin-top:8px;">MENU</button>
   </div>
 
   <div class="level-banner" id="levelBanner"></div>
 </div>
 
+<script src="config.js"></script>
 <script src="music.js"></script>
 <script src="leaderboard.js"></script>
+<script src="achievements.js"></script>
 <script src="court.js"></script>
 <script src="racket.js"></script>
+<script src="powerups.js"></script>
+<script src="effects.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

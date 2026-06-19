@@ -144,6 +144,40 @@ const AudioEngine = (() => {
     return enabled;
   }
 
-  return { init, startMusic, stopMusic, sfxHit, sfxBounce, sfxScore,
-           sfxLoseLife, sfxGameOver, sfxLevelUp, toggle, isEnabled: () => enabled };
+  function sfxSmash() {
+    init();
+    if (!enabled) return;
+    const t = actx.currentTime;
+    playNote(1000, 0.08, sfxGain, 'square', t);
+    playNote(1200, 0.06, sfxGain, 'sine', t);
+    playNote(800, 0.12, sfxGain, 'sawtooth', t + 0.06);
+  }
+
+  function sfxPowerUp() {
+    init();
+    if (!enabled) return;
+    const t = actx.currentTime;
+    playNote(523, 0.08, sfxGain, 'square', t);
+    playNote(659, 0.08, sfxGain, 'square', t + 0.06);
+    playNote(784, 0.1, sfxGain, 'square', t + 0.12);
+  }
+
+  function sfxCountdown() {
+    init();
+    if (!enabled) return;
+    playNote(440, 0.08, sfxGain, 'sine');
+  }
+
+  function pauseMusic() {
+    if (musicPlaying) { stopMusic(); }
+  }
+
+  function resumeMusic() {
+    if (enabled && !musicPlaying) startMusic();
+  }
+
+  return { init, startMusic, stopMusic, pauseMusic, resumeMusic,
+           sfxHit, sfxBounce, sfxScore, sfxLoseLife, sfxGameOver,
+           sfxLevelUp, sfxSmash, sfxPowerUp, sfxCountdown,
+           toggle, isEnabled: () => enabled };
 })();
